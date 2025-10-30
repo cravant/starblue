@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>StarBlue — Hedge Fund Project</title>
+  <meta name="description" content="StarBlue — simulated hedge fund portfolio. Start with $100 and manage holdings to see the portfolio value evolve." />
+  <link href="styles.css" rel="stylesheet" />
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-grid">
+      <div class="brand">
+        <div class="logo">★</div>
+        <div>
+          <h1>StarBlue</h1>
+          <p class="tag">Hedge Fund Project</p>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="#home" class="nav-link">Home</a>
+        <a href="#about" class="nav-link">About</a>
+        <a href="#contact" class="nav-link">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="home" class="container main-grid">
+    <section class="panel chart-panel">
+      <div class="panel-header">
+        <h2>Portfolio Value</h2>
+        <div class="stat">Cash: <span id="cash-display">$100.00</span></div>
+      </div>
+      <canvas id="portfolioChart" height="140"></canvas>
+      <div class="panel-actions">
+        <button id="addTransactionBtn" class="btn primary">Add Transaction</button>
+        <button id="updatePricesBtn" class="btn subtle">Update Prices</button>
+        <button id="resetBtn" class="btn danger">Reset</button>
+      </div>
+      <p class="muted">Chart shows portfolio total (cash + position values) over time. Add transactions or update prices to simulate activity.</p>
+    </section>
+
+    <aside class="panel controls-panel">
+      <div class="panel-header">
+        <h3>Holdings</h3>
+      </div>
+      <div id="holdingsContainer" class="holdings"></div>
+
+      <div class="panel-header" style="margin-top: 14px">
+        <h3>Transactions</h3>
+      </div>
+      <div id="transactionsContainer" class="transactions"></div>
+    </aside>
+
+    <section class="panel forms-panel" id="forms">
+      <div class="panel-header">
+        <h3>Transaction / Price Controls</h3>
+      </div>
+
+      <!-- Transaction Form -->
+      <form id="transactionForm" class="form">
+        <div class="form-row">
+          <label for="symbol">Symbol</label>
+          <input id="symbol" required placeholder="e.g. AAPL" />
+        </div>
+        <div class="form-row">
+          <label for="price">Price (per share)</label>
+          <input id="price" type="number" step="0.01" min="0" required placeholder="e.g. 150.00" />
+        </div>
+        <div class="form-row">
+          <label for="shares">Shares (positive to buy, negative to sell)</label>
+          <input id="shares" type="number" step="0.0001" required placeholder="e.g. 0.5" />
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn primary full">Submit Transaction</button>
+        </div>
+      </form>
+
+      <hr />
+
+      <!-- Price Update Form -->
+      <form id="priceForm" class="form">
+        <div class="form-row">
+          <label for="priceSymbol">Symbol</label>
+          <input id="priceSymbol" required placeholder="e.g. AAPL" />
+        </div>
+        <div class="form-row">
+          <label for="priceUpdate">New Price</label>
+          <input id="priceUpdate" type="number" step="0.01" min="0" required placeholder="e.g. 160.00" />
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn subtle full">Update Price</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel about-panel" id="about">
+      <div class="panel-header">
+        <h2>About StarBlue</h2>
+      </div>
+      <p class="lead">StarBlue is a simulated hedge fund project designed to let you practice portfolio management with a true institutional aesthetic. Start with <strong>$100</strong> cash and enter transactions — buys, sells, and price updates — to see how a real hedge fund's portfolio value evolves over time.</p>
+      <p>Use this as a sandbox for strategy testing, pitch visuals, or as a learning tool. The interface emphasizes clarity, fast decision logging, and an elegant presentation — just like a high-performance hedge fund.</p>
+    </section>
+
+    <section class="panel contact-panel" id="contact">
+      <div class="panel-header">
+        <h2>Contact</h2>
+      </div>
+      <p>For project details, partnership ideas, or feedback: <strong>contact@starblue.fund</strong></p>
+      <form id="contactForm" class="form small">
+        <div class="form-row">
+          <label for="name">Name</label>
+          <input id="name" placeholder="Your name" required/>
+        </div>
+        <div class="form-row">
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="you@domain.com" required/>
+        </div>
+        <div class="form-row">
+          <label for="message">Message</label>
+          <textarea id="message" rows="4" placeholder="Tell us about your idea..." required></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn primary full">Send Message</button>
+        </div>
+      </form>
+      <p class="muted">This contact form stores nothing — it's a UI demo. Replace with your backend endpoint to receive messages.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div>© <span id="year"></span> StarBlue · Built for strategy and presentation</div>
+      <div class="muted">Start: $100 · Local sandbox (data stored in browser)</div>
+    </div>
+  </footer>
+
+  <script src="scripts.js"></script>
+</body>
+</html>
