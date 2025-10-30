@@ -1,5 +1,5 @@
-// StarBlue portfolio script
-// Uses Chart.js (included in index.html). All data stored in localStorage under "starblue_portfolio"
+// StarBlue portfolio script (fixed Chart.js registration + safer chart lifecycle)
+// Drop this in to replace the previous scripts.js
 
 (() => {
   // ---------- Utilities ----------
@@ -25,7 +25,6 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if(!raw) return JSON.parse(JSON.stringify(DEFAULT));
       const parsed = JSON.parse(raw);
-      // migrate/validate basic fields:
       parsed.cash = Number(parsed.cash) || 0;
       parsed.holdings = parsed.holdings || {};
       parsed.transactions = parsed.transactions || [];
@@ -61,52 +60,104 @@
   const yearSpan = $('#year');
   yearSpan.textContent = new Date().getFullYear();
 
-  // Chart setup
-  const ctx = document.getElementById('portfolioChart').getContext('2d');
-  let chart = null;
-  function buildChart(){
-    const labels = state.history.map(h => new Date(h.time).toLocaleString());
-    const data = state.history.map(h => h.total);
+  // ---------- Chart.js registration & setup ----------
+  // Ensure Chart.js built-ins are registered (fixes "no chart" with some CDN builds)
+  try {
+    if (window.Chart && Chart.hasOwnProperty('register')) {
+      if (Chart.registerables) {
+        Chart.register(...Chart.registerables);
+      } else if (Chart.register && Chart.defaults && Chart.elements) {
+        // fallback: try to register common items if registerables not present
+        // (rare path, kept for compatibility)
+      }
+    }
+  } catch (e) {
+    console.warn('Chart register attempt failed (non-fatal):', e);
+  }
 
-    if(chart) chart.destroy();
-    chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Portfolio Value',
-          data,
-          fill: true,
-          tension: 0.22,
-          pointRadius: 3,
-          borderWidth: 2,
-          borderColor: getComputedStyle(document.documentElement).getPropertyValue('--accent-1') || '#2b6bff',
-          backgroundColor: 'rgba(43,107,255,0.12)'
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          y: {
-            ticks: {
-              callback: function(value){ return '$' + value.toLocaleString(); }
-            },
-            beginAtZero: true
-          }
+  // Ensure the parent gives canvas room — (optional safety) set a min height on canvas via style
+  const canvasEl = document.getElementById('portfolioChart');
+  if (canvasEl) canvasEl.style.minHeight = '260px';
+
+  const ctx = canvasEl.getContext('2d');
+  let chart = null;
+
+  function buildChart(){
+    // prepare labels + data
+    const labels = state.history.map(h => {
+      try { return new Date(h.time).toLocaleString(); } catch(e){ return h.time; }
+    });
+    const data = state.history.map(h => Number(h.total) || 0);
+
+    // destroy existing chart safely
+    try {
+      if (chart && typeof chart.destroy === 'function') chart.destroy();
+    } catch(e){
+      console.warn('error destroying old chart', e);
+    }
+
+    // fallback border color
+    let borderColor = '#2b6bff';
+    try {
+      const cssVar = getComputedStyle(document.documentElement).getPropertyValue('--accent-1');
+      if (cssVar && cssVar.trim()) borderColor = cssVar.trim();
+    } catch(e){ /* ignore */ }
+
+    // create new chart
+    try {
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Portfolio Value',
+            data,
+            fill: true,
+            tension: 0.22,
+            pointRadius: 3,
+            borderWidth: 2,
+            borderColor: borderColor,
+            backgroundColor: 'rgba(43,107,255,0.12)'
+          }]
         },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function(ctx){
-                return `${ctx.dataset.label}: $${Number(ctx.parsed.y).toLocaleString(undefined,{minimumFractionDigits:2})}`;
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              ticks: {
+                callback: function(value){ return '$' + Number(value).toLocaleString(undefined,{minimumFractionDigits:2}); }
+              },
+              beginAtZero: true
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(ctx){
+                  return `${ctx.dataset.label}: $${Number(ctx.parsed.y).toLocaleString(undefined,{minimumFractionDigits:2})}`;
+                }
               }
             }
           }
         }
+      });
+    } catch (err) {
+      console.error('Chart creation failed:', err);
+      // If it failed, fallback to a simple text message inside the chart area
+      const parent = canvasEl.parentElement;
+      if (parent) {
+        parent.querySelectorAll('.chart-error').forEach(n => n.remove());
+        const msg = document.createElement('div');
+        msg.className = 'chart-error';
+        msg.style.color = '#ffb3b3';
+        msg.style.padding = '18px';
+        msg.style.fontSize = '14px';
+        msg.textContent = 'Chart error — check console. Chart.js may not be loaded or registered correctly.';
+        parent.appendChild(msg);
       }
-    });
+    }
   }
 
   // ---------- Core logic ----------
@@ -123,24 +174,21 @@
   function pushHistoryPoint(noteTime = new Date()){
     const total = computePortfolioTotal();
     state.history.push({ time: noteTime.toISOString(), total: Number(total) });
-    // keep history size reasonable
     if(state.history.length > 1200) state.history.shift();
     saveState(state);
     buildChart();
     refreshUI();
   }
 
-  // update a symbol's lastPrice (only if holding exists or user forces update)
   function updateSymbolPrice(symbol, price){
     symbol = symbol.trim().toUpperCase();
     if(!symbol) return;
     if(!state.holdings[symbol]) {
-      // create a zero-holdings entry so valuation can track
       state.holdings[symbol] = { shares: 0, lastPrice: Number(price) };
     } else {
       state.holdings[symbol].lastPrice = Number(price);
     }
-    state.transactions.push({
+    state.transactions.unshift({
       time: new Date().toISOString(),
       symbol,
       price: Number(price),
@@ -151,7 +199,6 @@
     pushHistoryPoint();
   }
 
-  // add transaction: shares positive = buy, negative = sell
   function addTransaction(symbol, price, shares){
     symbol = symbol.trim().toUpperCase();
     price = Number(price);
@@ -160,22 +207,12 @@
       alert('Invalid transaction inputs.');
       return;
     }
-
     const cost = price * shares;
-
-    // For buys (shares>0), reduce cash; for sells (shares<0), increase cash
     state.cash = Number(state.cash) - cost;
-
-    // Update holdings
     if(!state.holdings[symbol]) state.holdings[symbol] = { shares: 0, lastPrice: price };
     state.holdings[symbol].shares = Number(state.holdings[symbol].shares) + shares;
-    // update lastPrice to new price
     state.holdings[symbol].lastPrice = price;
-
-    // If holdings go to (close to) zero, remove entry to tidy up
     if(Math.abs(state.holdings[symbol].shares) < 1e-8) delete state.holdings[symbol];
-
-    // record transaction
     state.transactions.unshift({
       time: new Date().toISOString(),
       symbol,
@@ -183,7 +220,6 @@
       shares,
       type: shares > 0 ? 'buy' : 'sell'
     });
-
     saveState(state);
     pushHistoryPoint();
   }
@@ -192,7 +228,6 @@
   function refreshUI(){
     cashDisplay.textContent = fmt(state.cash);
 
-    // holdings
     holdingsContainer.innerHTML = '';
     const keys = Object.keys(state.holdings);
     if(keys.length === 0){
@@ -221,7 +256,6 @@
       }
     }
 
-    // transactions
     transactionsContainer.innerHTML = '';
     if(state.transactions.length === 0){
       transactionsContainer.innerHTML = `<div class="small-muted">No transactions yet.</div>`;
@@ -277,13 +311,11 @@
   });
 
   addTransactionBtn.addEventListener('click', () => {
-    // focus transaction form for quick entry
     document.getElementById('symbol').focus();
     window.scrollTo({top: document.getElementById('forms').offsetTop - 20, behavior: 'smooth'});
   });
 
   updatePricesBtn.addEventListener('click', () => {
-    // Quick-sim: prompt to update prices for all holdings by random small delta (simulate market movement)
     if(Object.keys(state.holdings).length === 0){
       alert('No holdings to update. Add a position first.');
       return;
@@ -310,13 +342,11 @@
     if(confirm('Reset StarBlue project to initial state? This clears local data.')) resetState();
   });
 
-  // Quick holdings buy/sell buttons (delegated)
   holdingsContainer.addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-action]');
     if(!btn) return;
     const sym = btn.dataset.sym;
     const action = btn.dataset.action;
-    // open transaction form prepopulated
     const pricePref = state.holdings[sym] ? state.holdings[sym].lastPrice : 0;
     $('#symbol').value = sym;
     $('#price').value = Number(pricePref).toFixed(2);
@@ -325,20 +355,17 @@
     window.scrollTo({top: document.getElementById('forms').offsetTop - 20, behavior: 'smooth'});
   });
 
-  // Contact form demo (client-side only)
   $('#contactForm').addEventListener('submit', (ev) => {
     ev.preventDefault();
     alert('Thanks — message simulated. Replace the form action to post to your backend.');
     $('#contactForm').reset();
   });
 
-  // Initialize chart/history if empty
+  // Initialize
   if(!state.history || state.history.length === 0) {
     state.history = [{time: new Date().toISOString(), total: state.cash}];
     saveState(state);
   }
-
-  // Build initial chart and UI
   refreshAll();
 
   // expose for quick console inspection (dev convenience)
